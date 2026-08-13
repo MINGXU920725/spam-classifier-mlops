@@ -32,5 +32,5 @@ jobs:
       - name: Test
         run: pytest -q
 
-      - name: Build container
-        run: docker build -t spam-classifier:${{ github.sha }} .
+      # The production V2 container is built and smoke-tested in CD because it
+      # pulls a private, versioned model-artifact image from ACR.

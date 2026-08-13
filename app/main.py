@@ -13,19 +13,28 @@ from src.predict import SpamPredictor
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_MODEL_PATH = PROJECT_ROOT / "artifacts" / "spam_classifier.joblib"
+DEFAULT_ADVANCED_ARTIFACTS = PROJECT_ROOT / "artifacts" / "advanced-v2"
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    model_path = os.getenv("MODEL_PATH", str(DEFAULT_MODEL_PATH))
-    app.state.predictor = SpamPredictor(model_path)
+    backend = os.getenv("MODEL_BACKEND", "baseline").lower()
+    if backend == "advanced":
+        from src.advanced.predict import AdvancedSpamPredictor
+
+        artifact_dir = os.getenv("ADVANCED_ARTIFACT_DIR", str(DEFAULT_ADVANCED_ARTIFACTS))
+        app.state.predictor = AdvancedSpamPredictor(artifact_dir, cpu=True)
+    else:
+        model_path = os.getenv("MODEL_PATH", str(DEFAULT_MODEL_PATH))
+        app.state.predictor = SpamPredictor(model_path)
+    app.state.model_backend = backend
     yield
 
 
 app = FastAPI(
     title="Spam Classifier API",
     description="Classify an SMS message as ham or spam.",
-    version="1.0.0",
+    version="2.0.0",
     lifespan=lifespan,
 )
 
@@ -45,11 +54,12 @@ class PredictionResponse(BaseModel):
     label: str
     spam_probability: float
     model_version: str
+    detected_patterns: dict[str, bool] | None = None
 
 
 @app.get("/", tags=["system"])
 def root() -> dict:
-    return {"service": "spam-classifier", "docs": "/docs"}
+    return {"service": "spam-classifier", "api_version": "2.0.0", "docs": "/docs"}
 
 
 @app.get("/health", tags=["system"])
@@ -58,6 +68,7 @@ def health(request: Request) -> dict:
     return {
         "status": "healthy",
         "model_version": predictor.model_version,
+        "model_backend": request.app.state.model_backend,
     }
 
 

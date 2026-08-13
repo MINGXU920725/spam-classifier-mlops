@@ -1,0 +1,7 @@
+-r requirements-dev.txt
+accelerate==1.9.0
+hdbscan==0.8.40
+mlxtend==0.23.4
+torch==2.7.1
+transformers==4.53.2
+

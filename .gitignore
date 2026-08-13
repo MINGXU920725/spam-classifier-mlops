@@ -6,5 +6,6 @@ __pycache__/
 .env
 artifacts/*.joblib
 artifacts/*.json
+artifacts/advanced-v2/
 results/
 logs/

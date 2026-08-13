@@ -83,3 +83,6 @@ recording message bodies because they may contain personal data.
 3. Port and serialize the notebook's DistilBERT, cluster exemplars, scaler, and
    final classifier as `advanced-v2`.
 4. Compare latency, F1, and cost before promoting `advanced-v2`.
+
+The V2 training/export and fresh-process reload procedure is documented in
+[ADVANCED_V2.md](ADVANCED_V2.md).

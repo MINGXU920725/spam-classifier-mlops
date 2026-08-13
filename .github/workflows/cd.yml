@@ -14,6 +14,7 @@ env:
   ACR_NAME: spamclassifier0725
   ACR_LOGIN_SERVER: spamclassifier0725.azurecr.io
   IMAGE_NAME: spam-classifier
+  MODEL_IMAGE: spamclassifier0725.azurecr.io/spam-model:advanced-v2-20260813-200127
   RESOURCE_GROUP: rg-spam-classifier-dev
   WEBAPP_NAME: spamclassifier0725
 
@@ -40,12 +41,43 @@ jobs:
       - name: Log in to Azure Container Registry
         run: az acr login --name "$ACR_NAME"
 
-      - name: Build and push immutable image
+      - name: Build immutable V2 image
         env:
           IMAGE_TAG: ${{ github.event.workflow_run.head_sha }}
         run: |
           IMAGE="$ACR_LOGIN_SERVER/$IMAGE_NAME:$IMAGE_TAG"
-          docker build --tag "$IMAGE" .
+          docker build \
+            --file Dockerfile.v2 \
+            --build-arg MODEL_IMAGE="$MODEL_IMAGE" \
+            --tag "$IMAGE" .
+
+      - name: Smoke-test V2 container
+        env:
+          IMAGE_TAG: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          IMAGE="$ACR_LOGIN_SERVER/$IMAGE_NAME:$IMAGE_TAG"
+          docker run --detach --name spam-v2-smoke --publish 8000:8000 "$IMAGE"
+          cleanup() { docker rm --force spam-v2-smoke >/dev/null 2>&1 || true; }
+          trap cleanup EXIT
+          for attempt in {1..20}; do
+            RESPONSE=$(curl --fail --silent http://127.0.0.1:8000/health || true)
+            if echo "$RESPONSE" | grep --quiet '"model_backend":"advanced"'; then
+              echo "$RESPONSE"
+              echo "V2 container smoke test passed."
+              exit 0
+            fi
+            echo "Waiting for V2 container (attempt $attempt/20)..."
+            sleep 10
+          done
+          docker logs spam-v2-smoke
+          echo "V2 container smoke test failed."
+          exit 1
+
+      - name: Push verified V2 image
+        env:
+          IMAGE_TAG: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          IMAGE="$ACR_LOGIN_SERVER/$IMAGE_NAME:$IMAGE_TAG"
           docker push "$IMAGE"
 
       - name: Update Azure Web App

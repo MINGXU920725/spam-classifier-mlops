@@ -7,4 +7,5 @@ __pycache__
 .venv
 notebooks
 tests
-artifacts
+artifacts/spam_classifier.joblib
+artifacts/metrics.json

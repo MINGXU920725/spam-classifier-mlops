@@ -98,13 +98,15 @@ jobs:
         run: |
           URL="https://$WEBAPP_NAME.azurewebsites.net/health"
           for attempt in {1..20}; do
-            if curl --fail --silent --show-error "$URL"; then
-              echo
-              echo "Deployment is healthy."
-              exit 0
+            RESPONSE=$(curl --fail --silent --show-error "$URL" || true)
+            echo "Health response: $RESPONSE"
+            if echo "$RESPONSE" | grep --quiet '"model_backend":"advanced"' && \
+               echo "$RESPONSE" | grep --quiet '"model_version":"advanced-v2-20260813-200127"'; then
+                echo "V2 deployment is healthy."
+                exit 0
             fi
             echo "Waiting for deployment (attempt $attempt/20)..."
             sleep 15
           done
-          echo "Deployment did not become healthy in time."
+          echo "Azure is not serving the expected V2 model."
           exit 1

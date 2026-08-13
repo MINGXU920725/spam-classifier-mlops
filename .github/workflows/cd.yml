@@ -1,0 +1,78 @@
+name: CD
+
+# CI完成后触发；只有main分支的CI成功时才真正部署。
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  ACR_NAME: spamclassifier0725
+  ACR_LOGIN_SERVER: spamclassifier0725.azurecr.io
+  IMAGE_NAME: spam-classifier
+  RESOURCE_GROUP: rg-spam-classifier-dev
+  WEBAPP_NAME: spamclassifier0725
+
+jobs:
+  deploy:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'main'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out tested commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Log in to Azure with OIDC
+        uses: azure/login@v3
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Log in to Azure Container Registry
+        run: az acr login --name "$ACR_NAME"
+
+      - name: Build and push immutable image
+        env:
+          IMAGE_TAG: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          IMAGE="$ACR_LOGIN_SERVER/$IMAGE_NAME:$IMAGE_TAG"
+          docker build --tag "$IMAGE" .
+          docker push "$IMAGE"
+
+      - name: Update Azure Web App
+        env:
+          IMAGE_TAG: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          IMAGE="$ACR_LOGIN_SERVER/$IMAGE_NAME:$IMAGE_TAG"
+          az webapp config container set \
+            --resource-group "$RESOURCE_GROUP" \
+            --name "$WEBAPP_NAME" \
+            --container-image-name "$IMAGE" \
+            --container-registry-url "https://$ACR_LOGIN_SERVER"
+          az webapp restart \
+            --resource-group "$RESOURCE_GROUP" \
+            --name "$WEBAPP_NAME"
+
+      - name: Verify public health endpoint
+        run: |
+          URL="https://$WEBAPP_NAME.azurewebsites.net/health"
+          for attempt in {1..20}; do
+            if curl --fail --silent --show-error "$URL"; then
+              echo
+              echo "Deployment is healthy."
+              exit 0
+            fi
+            echo "Waiting for deployment (attempt $attempt/20)..."
+            sleep 15
+          done
+          echo "Deployment did not become healthy in time."
+          exit 1
